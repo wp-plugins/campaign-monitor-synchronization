@@ -1,6 +1,5 @@
 === Campaign Monitor Synchronization ===
 Contributors: carloroosen, pilotessa
-Donate link:
 Tags: Campaign Monitor, user management, mailing list
 Requires at least: 3.0.1
 Tested up to: 3.8.1
@@ -11,14 +10,16 @@ License URI: http://www.gnu.org/licenses/gpl-2.0.html
 Use the user list in your Wordpress installation as your mailing list for Campaign Monitor. 
 
 == Description ==
-
 This plugin automatically creates and maintains a mailinglist on Campaign Monitor mirroring the list of WordPress users. Typically this plugin is useful when you have information (or functionality) on your website that is accessible for registered users only, and you want to send email updates about that information (or functionality) to those users alone. 
 
 = Example use case =
 For instance, members can subscribe for events on your Wordpress website, and you send out announcements to those members using CampaignMonitor. With this plugin you can maintain your list on WordPress, manage their permissions, and the list on Campaign Monitor will always be an exact copy.
 
-= Don'ts =
-Don't use this plugin in combination with a subscription form that stores subscribers directly in the same CampaignMonitor list. Use Wordpress registration instead. Also don't modify the list in CampaignMonitor directly. Maintain the list in WordPress instead. The only exception is when people unsubscribe from the mailinglist, this will be stored in Campaign Monitor only, and can only be changed there.
+= Warning =
+This plugin performs a one-way synchronization from WordPress to Campaign Monitor. For instance, it will remove users from your Campaign Monitor list if they do not exist as users in WordPress. If this behavior is too strict for you, we recommend our other plugin [Campaign Monitor Dual Registration ](http://wordpress.org/plugins/campaign-monitor-dual-registration/).
+
+* Don't use this plugin in combination with a subscription form that stores subscribers directly in the same CampaignMonitor list. 
+* Also don't modify the list in CampaignMonitor directly, thos e changes will be lost. The only exception is when people unsubscribe from the mailinglist, this will be stored in Campaign Monitor only, and can only be changed there.
 
 = Technical details =
 
@@ -33,7 +34,7 @@ When a user unsubscribes on the Campaign Monitor website, this will not be overw
 = Links =
 
 * [Author's website](http://carloroosen.com/)
-* [Plugin page](http://carloroosen.com/campaign-monitor-synchronization/)
+* [Plugin page](http://carloroosen.com/campaign-monitor-synchronisation/)
 
 == Installation ==
 
@@ -69,3 +70,5 @@ When a user unsubscribes on the Campaign Monitor website, this will not be overw
 * Fix subscribers import bug.
 = 1.0.8 =
 * No fixes, just SVN troubles.
+= 1.0.9 =
+* More detailed error output.
