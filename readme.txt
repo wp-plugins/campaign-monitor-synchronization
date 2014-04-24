@@ -34,7 +34,7 @@ When a user unsubscribes on the Campaign Monitor website, this will not be overw
 = Links =
 
 * [Author's website](http://carloroosen.com/)
-* [Plugin page](http://carloroosen.com/campaign-monitor-synchronisation/)
+* [Plugin page](http://carloroosen.com/campaign-monitor-synchronization/)
 
 == Installation ==
 

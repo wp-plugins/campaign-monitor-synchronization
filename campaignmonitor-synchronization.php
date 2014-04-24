@@ -5,7 +5,7 @@ Description: This plugin automatically creates and maintains a mailinglist on Ca
 Version: 1.0.9
 Author: Carlo Roosen, Elena Mukhina
 Author URI: http://www.carloroosen.com/
-Plugin URI: http://www.carloroosen.com/campaign-monitor-synchronisation/
+Plugin URI: http://www.carloroosen.com/campaign-monitor-synchronization/
 */
 
 define( 'CMS_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
