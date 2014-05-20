@@ -2,7 +2,7 @@
 /*
 Plugin Name: Campaign Monitor Synchronization
 Description: This plugin automatically creates and maintains a mailinglist on Campaign Monitor mirroring the list of WordPress users. 
-Version: 1.0.9
+Version: 1.0.10
 Author: Carlo Roosen, Elena Mukhina
 Author URI: http://www.carloroosen.com/
 Plugin URI: http://www.carloroosen.com/campaign-monitor-synchronization/
@@ -15,27 +15,55 @@ define( 'CMS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 global $cms_fields_to_hide;
 
 // Add restore defaults to Wordpress cron
-register_activation_hook( __FILE__, 'cms_cron_activation' );
-register_deactivation_hook( __FILE__, 'cms_cron_deactivation' );
+// Remove the webhook if needed
+register_activation_hook( __FILE__, 'cms_activation' );
+register_deactivation_hook( __FILE__, 'cms_deactivation' );
 
 add_action( 'admin_menu', 'cms_plugin_menu' );
 add_action( 'cms_cron_update', 'cms_cron' );
 add_action( 'init', 'cms_api_init' );
 add_action( 'deleted_user', 'cms_user_delete' );
+add_action( 'edit_user_profile', 'cms_add_custom_user_profile_fields' );
+add_action( 'show_user_profile', 'cms_add_custom_user_profile_fields' );
+add_action( 'edit_user_profile_update', 'cms_save_custom_user_profile_fields' );
+add_action( 'personal_options_update', 'cms_save_custom_user_profile_fields' );
 add_action( 'profile_update', 'cms_user_update', 10, 2 );
 add_action( 'user_register', 'cms_user_insert' );
+add_action( 'wp_ajax_cms-cm-sync', 'cms_cm_sync' );
+add_action( 'wp_ajax_nopriv_cms-cm-sync', 'cms_cm_sync' );
 
 add_filter( 'cron_schedules', 'cms_cron_add_quarter_hour' );
 add_filter( 'update_user_metadata', 'cms_user_meta_update', 10, 5 );
 
 require_once CMS_PLUGIN_PATH . 'classes/CMS_Synchronizer.php';
 
-function cms_cron_activation() {
+function cms_activation() {
 	wp_schedule_event( time(), 'quarter_hour', 'cms_cron_update' );
 }
 
-function cms_cron_deactivation() {
+function cms_deactivation() {
 	wp_clear_scheduled_hook( 'cms_cron_update' );
+
+	// Remove the webhook if needed
+	if ( ! class_exists( 'CS_REST_Lists' ) ) {
+		require_once CMS_PLUGIN_PATH . 'campaignmonitor-createsend-php/csrest_lists.php';
+	}
+
+	$auth = array( 'api_key' => get_option( 'cms_api_key' ) );
+	$wrap_l = new CS_REST_Lists( get_option( 'cms_list_id' ), $auth );
+
+	$c = false;
+	$result = $wrap_l->get_webhooks();
+	foreach( $result->response as $hook ) {
+		if ( $hook->Url == admin_url( 'admin-ajax.php?action=cms-cm-sync' ) ) {
+			$c = $hook->WebhookID;
+			break;
+		}
+	}
+
+	if ( $c ) {
+		$result = $wrap_l->delete_webhook( $c );
+	}
 }
 
 function cms_plugin_menu() {
@@ -53,7 +81,37 @@ function cms_plugin_menu() {
 			}
 			update_option( 'cms_api_key', $_POST[ 'cms_api_key' ] );
 			update_option( 'cms_list_id', $_POST[ 'cms_list_id' ] );
-			
+
+			// Create the webhook if needed
+			if ( ! class_exists( 'CS_REST_Lists' ) ) {
+				require_once CMS_PLUGIN_PATH . 'campaignmonitor-createsend-php/csrest_lists.php';
+			}
+
+			$auth = array( 'api_key' => get_option( 'cms_api_key' ) );
+			$wrap_l = new CS_REST_Lists( get_option( 'cms_list_id' ), $auth );
+
+			$c = true;
+			$result = $wrap_l->get_webhooks();
+			if ( ! $result->was_successful() ) {
+				wp_redirect( home_url( '/wp-admin/plugins.php?page=campaignmonitor-sync&error=' . urlencode( $result->response->Message . ( ! empty( $result->response->ResultData ) ? '<br />Error details: ' . json_encode( $result->response->ResultData ) : '' ) ) ) );
+				die();
+			}
+
+			foreach( $result->response as $hook ) {
+				if ( $hook->Url == admin_url( 'admin-ajax.php?action=cms-cm-sync' ) ) {
+					$c = false;
+					break;
+				}
+			}
+
+			if ( $c ) {
+				$result = $wrap_l->create_webhook( array(
+					'Events' => array( CS_REST_LIST_WEBHOOK_SUBSCRIBE, CS_REST_LIST_WEBHOOK_DEACTIVATE ),
+					'Url' => admin_url( 'admin-ajax.php?action=cms-cm-sync' ),
+					'PayloadFormat' => CS_REST_WEBHOOK_FORMAT_JSON
+				) );
+			}
+
 			// Make forced sync
 			update_option( 'cms_update', 1 );
 			$result = CMS_Synchronizer::cms_update();
@@ -178,7 +236,8 @@ function cms_api_init() {
 		'wp_dashboard_quick_press_last_post_id',
 		'wp_user-settings',
 		'wp_user-settings-time',
-		'wp_user_level'
+		'wp_user_level',
+		'cms-subscribe-for-newsletter'
 	);
 	$cms_fields_to_hide = apply_filters( 'cms_edit_fileds_to_hide', $cms_fields_to_hide );
 }
@@ -191,12 +250,84 @@ function cms_load_translation_file() {
 	load_plugin_textdomain( 'campaignmonitor-sync', '', CMS_PLUGIN_PATH . 'translations' );
 }
 
+function cms_add_custom_user_profile_fields( $user ) {
+?>
+<h3><?php _e( 'Subscribe for newsletter' ); ?></h3>
+<table class="form-table">
+<tr>
+<th>
+<label for="cms-subscribe-for-newsletter"><?php _e( 'Subscribe for newsletter' ); ?>
+</label></th>
+<td>
+<input type="hidden" name="cms-subscribe-for-newsletter" value="0" /><input type="checkbox" name="cms-subscribe-for-newsletter" id="cms-subscribe-for-newsletter" value="1"<?php echo( get_user_meta( $user->ID, 'cms-subscribe-for-newsletter', true ) !== "0" ? ' checked="checked"' : '' ); ?> /><br />
+</td>
+</tr>
+</table>
+<?php
+}
+
+function cms_save_custom_user_profile_fields( $user_id ) {
+	global $wpdb;
+
+	if ( ! current_user_can( 'edit_user', $user_id ) ) {
+		return false;
+	}
+
+	update_user_meta( $user_id, 'cms-subscribe-for-newsletter', $_POST[ 'cms-subscribe-for-newsletter' ] );
+	update_option( 'cms_update', 1 );
+}
+
 function cms_user_update( $user_id, $old_user_data ) {
 	update_option( 'cms_update', 1 );
 }
 
 function cms_user_insert( $user_id ) {
 	update_option( 'cms_update', 1 );
+}
+
+function cms_cm_sync() {
+	global $cms_fields_to_hide;
+
+	if ( ! class_exists( 'CS_REST_SERIALISATION_get_available' ) ) {
+		require_once CMS_PLUGIN_PATH . 'campaignmonitor-createsend-php/class/serialisation.php';
+	}
+	if ( ! class_exists( 'CS_REST_Log' ) ) {
+		require_once CMS_PLUGIN_PATH . 'campaignmonitor-createsend-php/class/log.php';
+	}
+
+	// Get a serialiser for the webhook data - We assume here that we're dealing with json
+	$serialiser = CS_REST_SERIALISATION_get_available( new CS_REST_Log( CS_REST_LOG_NONE ) );
+
+	// Read all the posted data from the input stream
+	$raw_post = file_get_contents("php://input");
+
+	// And deserialise the data
+	$deserialised_data = $serialiser->deserialise( $raw_post );
+
+	// List ID check
+	$list_id = $deserialised_data->ListID;
+	if ( trim( $list_id ) == trim( get_option( 'cms_list_id' ) ) ) {
+		$cms_user_fields = ( array ) unserialize( base64_decode( get_option( 'cms_user_fields' ) ) );
+	
+		remove_action( 'profile_update', 'cms_user_update', 10 );
+		remove_action( 'user_register', 'cms_user_insert' );
+		remove_filter( 'update_user_metadata', 'cms_user_meta_update', 10 );
+		
+		foreach( $deserialised_data->Events as $subscriber ) {
+			$user = get_user_by( 'email', $subscriber->EmailAddress );
+			
+			if ( $user ) {
+				if ( $subscriber->Type == "Subscribe" ) {
+					update_user_meta( $user->ID, 'cms-subscribe-for-newsletter', 1 );
+				} else {
+					update_user_meta( $user->ID, 'cms-subscribe-for-newsletter', 0 );
+				}
+			}
+		}
+	}
+	
+	echo 'ok';
+	die();
 }
 
 function cms_cron_add_quarter_hour( $schedules ) {

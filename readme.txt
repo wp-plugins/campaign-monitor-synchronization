@@ -3,7 +3,7 @@ Contributors: carloroosen, pilotessa
 Tags: Campaign Monitor, user management, mailing list
 Requires at least: 3.0.1
 Tested up to: 3.9
-Stable tag: 1.0.9
+Stable tag: 1.0.10
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -72,3 +72,5 @@ When a user unsubscribes on the Campaign Monitor website, this will not be overw
 * No fixes, just SVN troubles.
 = 1.0.9 =
 * More detailed error output.
+= 1.0.10 =
+* "Subscribe for newsletter" functionality.
