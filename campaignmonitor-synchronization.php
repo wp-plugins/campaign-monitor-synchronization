@@ -2,7 +2,7 @@
 /*
 Plugin Name: Campaign Monitor Synchronization
 Description: This plugin automatically creates and maintains a mailinglist on Campaign Monitor mirroring the list of WordPress users. 
-Version: 1.0.10
+Version: 1.0.11
 Author: Carlo Roosen, Elena Mukhina
 Author URI: http://www.carloroosen.com/
 Plugin URI: http://www.carloroosen.com/campaign-monitor-synchronization/
@@ -274,7 +274,6 @@ function cms_save_custom_user_profile_fields( $user_id ) {
 	}
 
 	update_user_meta( $user_id, 'cms-subscribe-for-newsletter', $_POST[ 'cms-subscribe-for-newsletter' ] );
-	update_option( 'cms_update', 1 );
 }
 
 function cms_user_update( $user_id, $old_user_data ) {
@@ -345,11 +344,11 @@ function cms_user_meta_update( $temp, $user_id, $meta_key, $meta_value ) {
 	$cms_user_fields = ( array ) unserialize( base64_decode( get_option( 'cms_user_fields' ) ) );
 	
 	// The same value, no needs to update
-	if (  $meta_value == get_user_meta( $user_id, $meta_key, true ) )
+	if (  $meta_value === get_user_meta( $user_id, $meta_key, true ) )
 		return;
 	
 	// Field should not be updated
-	if ( ! in_array( $meta_key, $cms_user_fields ) || in_array( $meta_key, $cms_fields_to_hide ) )
+	if ( ! in_array( $meta_key, $cms_user_fields ) || ( in_array( $meta_key, $cms_fields_to_hide ) && $meta_key != 'cms-subscribe-for-newsletter' ) )
 		return;
 
 	update_option( 'cms_update', 1 );

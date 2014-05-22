@@ -60,7 +60,7 @@ class CMS_Synchronizer {
 				}
 			}
 
-			// Update users
+			// Update active users
 			$missing_users = array();
 			$u = get_users();
 			foreach( $u as $key => $value ) {
@@ -81,6 +81,7 @@ class CMS_Synchronizer {
 					$user = get_user_by( 'email', $subscriber->EmailAddress );
 
 					if ( ! $user ) {
+						// Subscriber delete
 						$result_tmp = $wrap_s->delete( $subscriber->EmailAddress );
 						if ( ! $result_tmp->was_successful() ) {
 							self::$error = $result_tmp->response;
@@ -143,7 +144,7 @@ class CMS_Synchronizer {
 				$i ++;
 			}
 
-			// Do the same with unsubscribed users
+			// Update unsubscribed users
 			$unsubscribed = array();
 			$result = $wrap_l->get_unsubscribed_subscribers( '', 1, 1000 );
 			if ( ! $result->was_successful() ) {
@@ -159,6 +160,14 @@ class CMS_Synchronizer {
 					$user = get_user_by( 'email', $subscriber->EmailAddress );
 
 					if ( ! $user ) {
+						// Subscriber resubscribe & delete (delete does not work for unsubscribed users)
+						$args[ 'Resubscribe' ] = true;
+						$result_tmp = $wrap_s->update( $subscriber->EmailAddress, $args );
+						if ( ! $result_tmp->was_successful() ) {
+							self::$error = $result_tmp->response;
+							return false;
+						}
+
 						$result_tmp = $wrap_s->delete( $subscriber->EmailAddress );
 						if ( ! $result_tmp->was_successful() ) {
 							self::$error = $result_tmp->response;
