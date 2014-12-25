@@ -2,7 +2,7 @@
 /*
 Plugin Name: Campaign Monitor Synchronization
 Description: This plugin automatically creates and maintains a mailinglist on Campaign Monitor mirroring the list of WordPress users. 
-Version: 1.0.11
+Version: 1.0.12
 Author: Carlo Roosen, Elena Mukhina
 Author URI: http://www.carloroosen.com/
 Plugin URI: http://www.carloroosen.com/campaign-monitor-synchronization/
@@ -237,6 +237,7 @@ function cms_api_init() {
 		'wp_user-settings',
 		'wp_user-settings-time',
 		'wp_user_level',
+		'session_tokens',
 		'cms-subscribe-for-newsletter'
 	);
 	$cms_fields_to_hide = apply_filters( 'cms_edit_fileds_to_hide', $cms_fields_to_hide );
