@@ -3,7 +3,7 @@ Contributors: carloroosen, pilotessa
 Tags: Campaign Monitor, user management, mailing list
 Requires at least: 3.0.1
 Tested up to: 4.1
-Stable tag: 1.0.12
+Stable tag: 1.0.13
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -78,3 +78,5 @@ When a user unsubscribes on the Campaign Monitor website, this will not be overw
 * Fix some update issues.
 = 1.0.12 =
 * 'Fields to hide' list update.
+= 1.0.13 =
+* New options page. User role export.
