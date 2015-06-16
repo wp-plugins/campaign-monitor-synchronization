@@ -2,7 +2,7 @@
 /*
 Plugin Name: Campaign Monitor Synchronization
 Description: This plugin automatically creates and maintains a mailinglist on Campaign Monitor mirroring the list of WordPress users. 
-Version: 1.0.13
+Version: 1.0.14
 Author: Carlo Roosen, Elena Mukhina
 Author URI: http://www.carloroosen.com/
 Plugin URI: http://www.carloroosen.com/campaign-monitor-synchronization/
@@ -22,15 +22,9 @@ add_action( 'admin_menu', 'cms_settings_menu' );
 add_action( 'cms_cron_update', 'cms_cron' );
 add_action( 'init', 'cms_init' );
 add_action( 'deleted_user', 'cms_user_delete' );
-add_action( 'edit_user_profile', 'cms_add_custom_user_profile_fields' );
-add_action( 'show_user_profile', 'cms_add_custom_user_profile_fields' );
-add_action( 'edit_user_profile_update', 'cms_save_custom_user_profile_fields' );
-add_action( 'personal_options_update', 'cms_save_custom_user_profile_fields' );
 add_action( 'profile_update', 'cms_user_update', 10, 2 );
 add_action( 'update_option_cms_settings', 'cms_save_and_sync' );
 add_action( 'user_register', 'cms_user_insert' );
-add_action( 'wp_ajax_cms-cm-sync', 'cms_cm_sync' );
-add_action( 'wp_ajax_nopriv_cms-cm-sync', 'cms_cm_sync' );
 
 add_filter( 'cron_schedules', 'cms_cron_add_quarter_hour' );
 add_filter( 'update_user_metadata', 'cms_user_meta_update', 10, 5 );
@@ -59,30 +53,6 @@ function cms_activation() {
 function cms_deactivation() {
 	// Remove WP Cron
 	wp_clear_scheduled_hook( 'cms_cron_update' );
-
-	// Remove the webhook if needed
-	if ( ! class_exists( 'CS_REST_Lists' ) ) {
-		require_once CMS_PLUGIN_PATH . 'campaignmonitor-createsend-php/csrest_lists.php';
-	}
-
-	$cms_settings = ( array ) get_option( 'cms_settings' );
-	$cms_api_key = $cms_settings[ 'api_key' ];
-	$cms_list_id = $cms_settings[ 'list_id' ];
-	$auth = array( 'api_key' => $cms_api_key );
-	$wrap_l = new CS_REST_Lists( $cms_list_id, $auth );
-
-	$c = false;
-	$result = $wrap_l->get_webhooks();
-	foreach( $result->response as $hook ) {
-		if ( $hook->Url == admin_url( 'admin-ajax.php?action=cms-cm-sync' ) ) {
-			$c = $hook->WebhookID;
-			break;
-		}
-	}
-
-	if ( $c ) {
-		$result = $wrap_l->delete_webhook( $c );
-	}
 }
 
 function cms_settings() {
@@ -196,8 +166,7 @@ function cms_init() {
 		'wp_user-settings',
 		'wp_user-settings-time',
 		'wp_user_level',
-		'session_tokens',
-		'cms-subscribe-for-newsletter'
+		'session_tokens'
 	);
 	$cms_fields_to_hide = apply_filters( 'cms_edit_fileds_to_hide', $cms_fields_to_hide );
 	
@@ -228,32 +197,6 @@ function cms_load_translation_file() {
 	load_plugin_textdomain( 'campaignmonitor-sync', '', CMS_PLUGIN_PATH . 'translations' );
 }
 
-function cms_add_custom_user_profile_fields( $user ) {
-?>
-<h3><?php _e( 'Subscribe for newsletter' ); ?></h3>
-<table class="form-table">
-<tr>
-<th>
-<label for="cms-subscribe-for-newsletter"><?php _e( 'Subscribe for newsletter' ); ?>
-</label></th>
-<td>
-<input type="hidden" name="cms-subscribe-for-newsletter" value="0" /><input type="checkbox" name="cms-subscribe-for-newsletter" id="cms-subscribe-for-newsletter" value="1"<?php echo( get_user_meta( $user->ID, 'cms-subscribe-for-newsletter', true ) !== "0" ? ' checked="checked"' : '' ); ?> /><br />
-</td>
-</tr>
-</table>
-<?php
-}
-
-function cms_save_custom_user_profile_fields( $user_id ) {
-	global $wpdb;
-
-	if ( ! current_user_can( 'edit_user', $user_id ) ) {
-		return false;
-	}
-
-	update_user_meta( $user_id, 'cms-subscribe-for-newsletter', $_POST[ 'cms-subscribe-for-newsletter' ] );
-}
-
 function cms_user_update( $user_id, $old_user_data ) {
 	update_option( 'cms_update', 1 );
 }
@@ -263,40 +206,6 @@ function cms_save_and_sync( $cms_settings_old ) {
 	$cms_settings_old = ( array ) $cms_settings_old;
 
 	if ( $cms_settings[ 'sync_timestamp' ] > $cms_settings_old[ 'sync_timestamp' ] ) {
-		// Handle the webhook
-		if ( ! class_exists( 'CS_REST_Lists' ) ) {
-			require_once CMS_PLUGIN_PATH . 'campaignmonitor-createsend-php/csrest_lists.php';
-		}
-
-		$cms_api_key = $cms_settings[ 'api_key' ];
-		$cms_list_id = $cms_settings[ 'list_id' ];
-		$auth = array( 'api_key' => $cms_api_key );
-		$wrap_l = new CS_REST_Lists( $cms_list_id, $auth );
-
-		$c = true;
-		$result = $wrap_l->get_webhooks();
-		if ( ! $result->was_successful() ) {
-			add_settings_error( 'cms_settings', 'cms-error', __( $result->response->Message, 'cms_plugin' ) );
-		}
-
-		foreach( $result->response as $hook ) {
-			if ( $hook->Url == admin_url( 'admin-ajax.php?action=cms-cm-sync' ) ) {
-				$c = false;
-				break;
-			}
-		}
-
-		if ( $c ) {
-			$result = $wrap_l->create_webhook( array(
-				'Events' => array( CS_REST_LIST_WEBHOOK_SUBSCRIBE, CS_REST_LIST_WEBHOOK_DEACTIVATE ),
-				'Url' => admin_url( 'admin-ajax.php?action=cms-cm-sync' ),
-				'PayloadFormat' => CS_REST_WEBHOOK_FORMAT_JSON
-			) );
-			if ( ! $result->was_successful() ) {
-				add_settings_error( 'cms_settings', 'cms-error', __( $result->response->Message, 'cms_plugin' ) );
-			}
-		}
-
 		// Make forced sync
 		update_option( 'cms_update', 1 );
 		$result = CMS_Synchronizer::cms_update();
@@ -308,53 +217,6 @@ function cms_save_and_sync( $cms_settings_old ) {
 
 function cms_user_insert( $user_id ) {
 	update_option( 'cms_update', 1 );
-}
-
-function cms_cm_sync() {
-	global $cms_fields_to_hide;
-
-	// Get plugin settings
-	$cms_settings = ( array ) get_option( 'cms_settings' );
-	$cms_list_id = $cms_settings[ 'list_id' ];
-
-	if ( ! class_exists( 'CS_REST_SERIALISATION_get_available' ) ) {
-		require_once CMS_PLUGIN_PATH . 'campaignmonitor-createsend-php/class/serialisation.php';
-	}
-	if ( ! class_exists( 'CS_REST_Log' ) ) {
-		require_once CMS_PLUGIN_PATH . 'campaignmonitor-createsend-php/class/log.php';
-	}
-
-	// Get a serialiser for the webhook data - We assume here that we're dealing with json
-	$serialiser = CS_REST_SERIALISATION_get_available( new CS_REST_Log( CS_REST_LOG_NONE ) );
-
-	// Read all the posted data from the input stream
-	$raw_post = file_get_contents("php://input");
-
-	// And deserialise the data
-	$deserialised_data = $serialiser->deserialise( $raw_post );
-
-	// List ID check
-	$list_id = $deserialised_data->ListID;
-	if ( trim( $list_id ) == trim( $cms_list_id ) ) {
-		remove_action( 'profile_update', 'cms_user_update', 10 );
-		remove_action( 'user_register', 'cms_user_insert' );
-		remove_filter( 'update_user_metadata', 'cms_user_meta_update', 10 );
-		
-		foreach( $deserialised_data->Events as $subscriber ) {
-			$user = get_user_by( 'email', $subscriber->EmailAddress );
-			
-			if ( $user ) {
-				if ( $subscriber->Type == "Subscribe" ) {
-					update_user_meta( $user->ID, 'cms-subscribe-for-newsletter', 1 );
-				} else {
-					update_user_meta( $user->ID, 'cms-subscribe-for-newsletter', 0 );
-				}
-			}
-		}
-	}
-	
-	echo 'ok';
-	die();
 }
 
 function cms_cron_add_quarter_hour( $schedules ) {
@@ -377,7 +239,7 @@ function cms_user_meta_update( $temp, $user_id, $meta_key, $meta_value ) {
 		return;
 	
 	// Field should not be updated
-	if ( ! in_array( $meta_key, $cms_user_fields ) || ( in_array( $meta_key, $cms_fields_to_hide ) && $meta_key != 'cms-subscribe-for-newsletter' ) )
+	if ( ! in_array( $meta_key, $cms_user_fields ) || ( in_array( $meta_key, $cms_fields_to_hide ) ) )
 		return;
 
 	update_option( 'cms_update', 1 );

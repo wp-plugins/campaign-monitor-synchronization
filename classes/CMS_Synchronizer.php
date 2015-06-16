@@ -95,15 +95,6 @@ class CMS_Synchronizer {
 								return false;
 							}
 						} else {
-							// Unsubscribe if needed
-							if ( get_user_meta( $user->ID, 'cms-subscribe-for-newsletter', true ) === "0" ) {
-								$result_tmp = $wrap_s->unsubscribe( $user->user_email );
-								if ( ! $result_tmp->was_successful() ) {
-									self::$error = $result_tmp->response;
-									return false;
-								}
-							}
-
 							$args = array();
 
 							if ( trim( $user->first_name . ' ' . $user->last_name ) != trim( $subscriber->Name ) ) {
@@ -156,7 +147,7 @@ class CMS_Synchronizer {
 					$i ++;
 				}
 
-				// Update unsubscribed users
+				// Get unsubscribed users
 				$unsubscribed = array();
 				$result = $wrap_l->get_unsubscribed_subscribers( '', 1, 1000 );
 				if ( ! $result->was_successful() ) {
@@ -167,74 +158,7 @@ class CMS_Synchronizer {
 				$i = 2;
 				while ( count( $result->response->Results ) ) {
 					foreach( $result->response->Results as $key => $subscriber ) {
-						set_time_limit ( 60 );
-						
-						$user = get_user_by( 'email', $subscriber->EmailAddress );
-
-						if ( ! $user ) {
-							// Subscriber resubscribe & delete (delete does not work for unsubscribed users)
-							$args = array(
-								'Resubscribe' => true
-							);
-							$result_tmp = $wrap_s->update( $subscriber->EmailAddress, $args );
-							if ( ! $result_tmp->was_successful() ) {
-								self::$error = $result_tmp->response;
-								return false;
-							}
-
-							$result_tmp = $wrap_s->delete( $subscriber->EmailAddress );
-							if ( ! $result_tmp->was_successful() ) {
-								self::$error = $result_tmp->response;
-								return false;
-							}
-						} else {
-							$args = array();
-							
-							if ( trim( $user->first_name . ' ' . $user->last_name ) != trim( $subscriber->Name ) ) {
-								$args[ 'Name' ] = $user->first_name . ' ' . $user->last_name;
-							}
-							
-							$custom_values = array();
-							foreach( $subscriber->CustomFields as $field ) {
-								$k = str_replace( '[', '', str_replace( ']', '', $field->Key ) );
-								
-								$custom_values[ $k ] = $field->Value;
-							}
-							foreach( $cms_user_fields as $key => $field ) {
-								if ( ! in_array( $field, $cms_fields_to_hide ) ) {
-									if ( empty( $custom_values[ $field ] ) || trim( $custom_values[ $field ] ) != trim( get_user_meta( $user->ID, $field, true ) ) ) {
-										// We export scalar values only
-										if ( is_scalar( get_user_meta( $user->ID, $field, true ) ) ) {
-											$args[ 'CustomFields' ][] = array( 'Key' => $field, 'Value' => get_user_meta( $user->ID, $field, true ) );
-										} else {
-											$args[ 'CustomFields' ][] = array( 'Key' => $field, 'Value' => '' );
-										}
-									}
-								}
-							}
-							if ( ! empty( $cms_settings[ 'user_role' ] ) && ! empty( $user->roles[ 0 ] ) ) {
-								if ( empty( $custom_values[ '_cms_wp_user_role' ] ) || trim( $custom_values[ '_cms_wp_user_role' ] ) != trim( $user->roles[ 0 ] ) ) {
-									$args[ 'CustomFields' ][] = array( 'Key' => '_cms_wp_user_role', 'Value' => $user->roles[ 0 ] );
-								}
-							}
-							
-							// Resubscribe if needed
-							if ( get_user_meta( $user->ID, 'cms-subscribe-for-newsletter', true ) !== "0" ) {
-								$args[ 'Resubscribe' ] = true;
-							}
-
-							if ( count( $args ) ) {
-								$result_tmp = $wrap_s->update( $user->user_email, $args );
-								if ( ! $result_tmp->was_successful() ) {
-									self::$error = $result_tmp->response;
-									return false;
-								}
-							}
-						}
-						
-						if ( in_array( $subscriber->EmailAddress, $missing_users ) ) {
-							unset( $missing_users[ array_search( $subscriber->EmailAddress, $missing_users ) ] );
-						}
+						$unsubscribed[] = $subscriber->EmailAddress;
 					}
 					
 					$result = $wrap_l->get_unsubscribed_subscribers( '', $i, 1000 );
@@ -269,9 +193,8 @@ class CMS_Synchronizer {
 
 				// Add missing subscribers
 				$subscribers = array();
-				$users_to_unsubscribe = array();
 				foreach( $missing_users as $key => $user_email ) {
-					if ( ! in_array( $user_email, $bounced ) ) {
+					if ( ! in_array( $user_email, $unsubscribed ) && ! in_array( $user_email, $bounced ) ) {
 						// Subscriber does not exist, let's add him
 						$user = get_user_by( 'email', $user_email );
 
@@ -298,9 +221,6 @@ class CMS_Synchronizer {
 							}
 
 							$subscribers[] = $args;
-							if ( get_user_meta( $user->ID, 'cms-subscribe-for-newsletter', true ) === "0" ) {
-								$users_to_unsubscribe[] = $user;
-							}
 						}
 					}
 				}
@@ -317,15 +237,6 @@ class CMS_Synchronizer {
 					}
 					
 					$result = $wrap_s->import( $subscribers1000, true );
-					if ( ! $result->was_successful() ) {
-						self::$error = $result->response;
-						return false;
-					}
-				}
-
-				// Unsubscribe users with "Subscribe for newsletter" unchecked
-				foreach( $users_to_unsubscribe as $key => $value ) {
-					$result = $wrap_s->unsubscribe( $value->user_email );
 					if ( ! $result->was_successful() ) {
 						self::$error = $result->response;
 						return false;
